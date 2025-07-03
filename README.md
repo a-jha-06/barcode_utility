@@ -1,74 +1,96 @@
-<<<<<<< HEAD
-# Getting Started with Create React App
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+# 📦 Barcode Printing Utility
 
-## Available Scripts
+A simple React app to:
+- ✅ Sign in with Google (top-right)
+- ✅ Generate barcodes for a SKU and PO with auto-incremented serials
+- ✅ Preview & print barcodes
+- ✅ Keep a log of every barcode ever generated
+- ✅ Export all barcodes for a SKU as a CSV file
 
-In the project directory, you can run:
+---
 
-### `npm start`
+## 🚀 Setup
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+1️⃣ **Clone this project**
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+```bash
+git clone https://your-repo-url.git
+cd your-repo-folder
+```
 
-### `npm test`
+2️⃣ **Install dependencies**
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+```bash
+npm install
+```
 
-### `npm run build`
+3️⃣ **Add Google OAuth**
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+In your `index.js` or `main.jsx`:
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+```jsx
+import { GoogleOAuthProvider } from "@react-oauth/google";
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+<GoogleOAuthProvider clientId="YOUR_GOOGLE_CLIENT_ID">
+  <App />
+</GoogleOAuthProvider>
+```
 
-### `npm run eject`
+Replace `YOUR_GOOGLE_CLIENT_ID` with your real OAuth Client ID from [Google Cloud Console](https://console.cloud.google.com/).
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+---
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+## 🧑‍💻 Run locally
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+```bash
+npm start
+```
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+---
 
-## Learn More
+## 📑 How to use
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+1️⃣ **Sign in**  
+Click the Google Sign-In button in the top right.
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+2️⃣ **Enter SKU, PO, and Quantity**  
+- SKU → the product code  
+- PO → purchase order (optional)  
+- Quantity → how many barcodes to generate
 
-### Code Splitting
+3️⃣ **Click Generate**  
+The app generates unique barcodes with auto-incrementing serials.  
+Example: `SKU-1`, `SKU-2`, `SKU-3` ...
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+4️⃣ **Preview & Print**  
+- Preview shows the barcodes.
+- Click **Print** to print them — each barcode is on a separate label (50mm x 25mm).
 
-### Analyzing the Bundle Size
+5️⃣ **Export CSV**  
+- Click **Export Barcodes CSV**.
+- A new page will open.
+- Enter the SKU → Click **Export** → CSV will include every barcode ever generated for that SKU.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+---
 
-### Making a Progressive Web App
+## 🗂️ Where data is stored
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+- Last serial number → `localStorage`
+- Barcode logs → `localStorage`  
+  (So your logs persist between page reloads on the same browser)
 
-### Advanced Configuration
+---
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+## ✅ Tested with
 
-### Deployment
+- React 18+
+- `@react-oauth/google`
+- `jwt-decode`
+- `jsbarcode`
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+---
 
-### `npm run build` fails to minify
+## 📃 License
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
-=======
-# barcode_utility
->>>>>>> 577ab4f8a74db53adccd565de46e92eb6d6dc3c2
+MIT — Use freely!
