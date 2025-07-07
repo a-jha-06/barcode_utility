@@ -5,8 +5,9 @@ import JsBarcode from "jsbarcode";
 
 export default function App() {
   const [user, setUser] = useState(null);
-  const [sku, setSku] = useState("");
+  const [skuPrefix, setSkuPrefix] = useState(""); // only the prefix
   const [po, setPo] = useState("");
+  const [barcodeNumber, setBarcodeNumber] = useState(""); // same for all
   const [quantity, setQuantity] = useState(1);
   const [startSerial, setStartSerial] = useState("");
   const [barcodes, setBarcodes] = useState([]);
@@ -14,20 +15,23 @@ export default function App() {
   const [error, setError] = useState("");
   const [lastSerial, setLastSerial] = useState(0);
 
-  // Load last serial when SKU changes
+  // Load last serial on SKU prefix change
   useEffect(() => {
-    if (sku) {
-      const savedSerial = localStorage.getItem(`lastSerial-${sku}`);
+    if (skuPrefix) {
+      const savedSerial = localStorage.getItem(`lastSerial-${skuPrefix}`);
       setLastSerial(savedSerial ? parseInt(savedSerial) : 0);
     } else {
       setLastSerial(0);
     }
-  }, [sku]);
+  }, [skuPrefix]);
 
-  // Generate barcodes
   const generateBarcodes = () => {
-    if (!sku || quantity <= 0) {
-      setError("SKU and Quantity required.");
+    if (!skuPrefix || quantity <= 0) {
+      setError("SKU Prefix and Quantity are required.");
+      return;
+    }
+    if (!barcodeNumber) {
+      setError("Barcode Number is required.");
       return;
     }
     if (!user) {
@@ -36,22 +40,28 @@ export default function App() {
     }
 
     const serialStart = startSerial ? parseInt(startSerial) : lastSerial + 1;
-    const newSerials = Array.from(
-      { length: quantity },
-      (_, i) => `${sku}-${serialStart + i}`
-    );
-    setBarcodes(newSerials);
+    const newBarcodes = Array.from({ length: quantity }, (_, i) => {
+      const serial = serialStart + i;
+      const barcodeValue = `${skuPrefix}-${serial}`;
+      return {
+        barcodeValue,
+        barcodeNumber,
+      };
+    });
+
+    setBarcodes(newBarcodes);
 
     const newLastSerial = serialStart + quantity - 1;
-    localStorage.setItem(`lastSerial-${sku}`, newLastSerial);
+    localStorage.setItem(`lastSerial-${skuPrefix}`, newLastSerial);
     setLastSerial(newLastSerial);
 
     const newLog = {
-      sku,
+      skuPrefix,
       po,
+      barcodeNumber,
       quantity,
       startSerial: serialStart,
-      barcodes: newSerials,
+      barcodes: newBarcodes,
       timestamp: new Date().toISOString(),
     };
     setLogs((prev) => [...prev, newLog]);
@@ -59,14 +69,14 @@ export default function App() {
     setError("");
   };
 
-  // Render barcodes
   useEffect(() => {
-    barcodes.forEach((code) => {
-      JsBarcode(`#barcode-${code}`, code, {
+    barcodes.forEach((b) => {
+      JsBarcode(`#barcode-${b.barcodeValue}`, b.barcodeValue, {
         format: "CODE128",
-        displayValue: true,
-        width: 2,
-        height: 40,
+        displayValue: false,
+        width: 1.2,
+        height: 42,
+        margin: 2,
       });
     });
   }, [barcodes]);
@@ -100,12 +110,12 @@ export default function App() {
       return logDate >= fromDate && logDate <= toDate;
     });
 
-    const csvHeader = "SKU,PO,Serial,Timestamp\n";
+    const csvHeader = "SKU_Prefix,PO,BarcodeNumber,BarcodeValue,Timestamp\n";
     const rows = filteredLogs
       .flatMap((log) =>
         log.barcodes.map(
-          (barcode) =>
-            `${log.sku},${log.po},${barcode},${log.timestamp}`
+          (b) =>
+            `${log.skuPrefix},${log.po},${log.barcodeNumber},${b.barcodeValue},${log.timestamp}`
         )
       )
       .join("\n");
@@ -120,14 +130,17 @@ export default function App() {
 
   return (
     <div style={{ padding: "40px", fontFamily: "sans-serif", position: "relative" }}>
-      {/* Logo/Header */}
       <h2 style={{ textAlign: "center", letterSpacing: "5px" }}>PALMONAS</h2>
       <h1 style={{ textAlign: "center" }}>Barcode Printing Utility</h1>
 
-      {/* Sign In/Out */}
       <div style={{ position: "absolute", top: "20px", right: "20px" }}>
         {user ? (
-          <button onClick={() => { googleLogout(); setUser(null); }}>
+          <button
+            onClick={() => {
+              googleLogout();
+              setUser(null);
+            }}
+          >
             Sign Out
           </button>
         ) : (
@@ -141,13 +154,12 @@ export default function App() {
         )}
       </div>
 
-      {/* Form Inputs */}
       <div style={{ marginTop: "40px", maxWidth: "400px" }}>
         <div>
-          <label>SKU :</label>
+          <label>SKU Prefix :</label>
           <input
-            value={sku}
-            onChange={(e) => setSku(e.target.value)}
+            value={skuPrefix}
+            onChange={(e) => setSkuPrefix(e.target.value)}
             disabled={!user}
             style={{ width: "100%", margin: "5px 0" }}
           />
@@ -180,15 +192,24 @@ export default function App() {
             style={{ width: "100%", margin: "5px 0" }}
           />
         </div>
-
+        <div>
+          <label>Barcode Number :</label>
+          <input
+            value={barcodeNumber}
+            onChange={(e) => setBarcodeNumber(e.target.value)}
+            disabled={!user}
+            style={{ width: "100%", margin: "5px 0" }}
+          />
+        </div>
         <div>
           <label>Printer :</label>
           <select style={{ width: "100%", margin: "5px 0" }}>
-            <option>Default Printer</option>
+            <option>TSCDA 310</option>
+            <option>TSCDA 210</option>
           </select>
         </div>
 
-        <p>Last Serial Printed : {sku ? lastSerial : "N/A"}</p>
+        <p>Last Serial Printed : {skuPrefix ? lastSerial : "N/A"}</p>
 
         <button onClick={generateBarcodes} disabled={!user}>
           Generate Barcodes
@@ -200,15 +221,17 @@ export default function App() {
         {error && <p style={{ color: "red" }}>{error}</p>}
       </div>
 
-      {/* Preview */}
       <h4>Preview :</h4>
       <div className="barcode-preview">
-        {barcodes.map((code) => (
-          <svg key={code} id={`barcode-${code}`}></svg>
+        {barcodes.map((b) => (
+          <div className="barcode-label" key={b.barcodeValue}>
+            <svg id={`barcode-${b.barcodeValue}`}></svg>
+            <div className="sku-text">{b.barcodeValue}</div>
+            <div className="barcode-number">{b.barcodeNumber}</div>
+          </div>
         ))}
       </div>
 
-      {/* Export */}
       <button
         onClick={handleExport}
         style={{
@@ -219,33 +242,55 @@ export default function App() {
           padding: "10px 20px",
           border: "none",
           borderRadius: "5px",
-          cursor: "pointer"
+          cursor: "pointer",
         }}
       >
         Data Export Button
       </button>
 
       <style>{`
-        @media print {
-          @page {
-            size: 50mm 25mm;
-            margin: 0;
-          }
-          body * {
-            visibility: hidden;
-          }
-          .barcode-preview, .barcode-preview * {
-            visibility: visible;
-          }
-          .barcode-preview {
-            position: absolute;
-            left: 0;
-            top: 0;
-          }
-          svg {
-            page-break-after: always;
-          }
-        }
+             .barcode-preview {
+              display: grid;
+              grid-template-columns: repeat(2, 48mm); /* 2 columns */
+              grid-auto-rows: 25mm;                   /* Each row is 25mm high */
+              gap: 3mm 3mm;                           /* 3mm gap between rows & columns */
+              justify-content: start;
+            }
+
+            .barcode-label {
+              width: 46mm;             /* Fits inside 48mm column */
+              height: 25mm;            /* Total height including padding */
+              padding: 2mm;            /* 2mm inside padding all sides */
+              box-sizing: border-box;  /* Makes padding stay inside 25mm */
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              font-size: 13px;
+            }
+
+            svg {
+              width: 100%;
+              height: auto;
+            }
+
+            @media print {
+              @page {
+                margin: 0;
+              }
+              body * {
+                visibility: hidden;
+              }
+              .barcode-preview, .barcode-preview * {
+                visibility: visible;
+              }
+              .barcode-preview {
+                position: absolute;
+                left: 0;
+                top: 0;
+              }
+            }
+
       `}</style>
     </div>
   );
