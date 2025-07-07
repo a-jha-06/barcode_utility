@@ -8,21 +8,11 @@ export default function App() {
   const [sku, setSku] = useState("");
   const [po, setPo] = useState("");
   const [quantity, setQuantity] = useState(1);
+  const [startSerial, setStartSerial] = useState("");
   const [barcodes, setBarcodes] = useState([]);
   const [logs, setLogs] = useState([]);
   const [error, setError] = useState("");
   const [lastSerial, setLastSerial] = useState(0);
-
-  // Load logs from localStorage
-  useEffect(() => {
-    const storedLogs = JSON.parse(localStorage.getItem("logs") || "[]");
-    setLogs(storedLogs);
-  }, []);
-
-  // Save logs when they change
-  useEffect(() => {
-    localStorage.setItem("logs", JSON.stringify(logs));
-  }, [logs]);
 
   // Load last serial when SKU changes
   useEffect(() => {
@@ -34,6 +24,7 @@ export default function App() {
     }
   }, [sku]);
 
+  // Generate barcodes
   const generateBarcodes = () => {
     if (!sku || quantity <= 0) {
       setError("SKU and Quantity required.");
@@ -44,14 +35,14 @@ export default function App() {
       return;
     }
 
-    const startSerial = lastSerial + 1;
+    const serialStart = startSerial ? parseInt(startSerial) : lastSerial + 1;
     const newSerials = Array.from(
       { length: quantity },
-      (_, i) => `${sku}-${startSerial + i}`
+      (_, i) => `${sku}-${serialStart + i}`
     );
     setBarcodes(newSerials);
 
-    const newLastSerial = startSerial + quantity - 1;
+    const newLastSerial = serialStart + quantity - 1;
     localStorage.setItem(`lastSerial-${sku}`, newLastSerial);
     setLastSerial(newLastSerial);
 
@@ -59,78 +50,13 @@ export default function App() {
       sku,
       po,
       quantity,
-      startSerial,
+      startSerial: serialStart,
+      barcodes: newSerials,
       timestamp: new Date().toISOString(),
     };
     setLogs((prev) => [...prev, newLog]);
 
     setError("");
-  };
-
-  const handlePrint = () => {
-    if (!user) {
-      setError("❌ Please sign in first!");
-      return;
-    }
-    if (barcodes.length === 0) {
-      setError("❌ Please generate barcodes first!");
-      return;
-    }
-
-    setError("");
-    setTimeout(() => window.print(), 500);
-  };
-
-  const openExportPage = () => {
-    const win = window.open("", "_blank");
-    win.document.write(`
-      <html>
-        <head>
-          <title>Export Barcodes</title>
-        </head>
-        <body>
-          <h2>Export Barcodes CSV</h2>
-          <label>SKU: <input type="text" id="skuInput" placeholder="Enter SKU" /></label><br/>
-          <button id="exportBtn">Export</button>
-          <script>
-            const logs = ${JSON.stringify(logs)};
-            document.getElementById("exportBtn").onclick = () => {
-              const sku = document.getElementById("skuInput").value.trim();
-              if (!sku) {
-                alert("Enter a SKU.");
-                return;
-              }
-
-              const rows = [];
-              logs.forEach(log => {
-                if (log.sku === sku) {
-                  for (let i = 0; i < log.quantity; i++) {
-                    const serial = log.startSerial + i;
-                    const barcode = \`\${log.sku}-\${serial}\`;
-                    rows.push(\`\${log.sku},\${log.po},\${barcode},\${log.timestamp}\`);
-                  }
-                }
-              });
-
-              if (rows.length === 0) {
-                alert("No barcodes found for that SKU!");
-                return;
-              }
-
-              const header = "SKU,PO,Barcode,Timestamp\\n";
-              const csvContent = header + rows.join("\\n");
-              const blob = new Blob([csvContent], { type: "text/csv" });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement("a");
-              a.href = url;
-              a.download = \`\${sku}_barcodes.csv\`;
-              a.click();
-            };
-          </script>
-        </body>
-      </html>
-    `);
-    win.document.close();
   };
 
   // Render barcodes
@@ -145,62 +71,124 @@ export default function App() {
     });
   }, [barcodes]);
 
+  const handlePrint = () => {
+    if (!user) {
+      setError("Please sign in first.");
+      return;
+    }
+    if (barcodes.length === 0) {
+      setError("Please generate barcodes first.");
+      return;
+    }
+    window.print();
+  };
+
+  const handleExport = () => {
+    const from = prompt("Enter start date (YYYY-MM-DD):");
+    const to = prompt("Enter end date (YYYY-MM-DD):");
+
+    if (!from || !to) {
+      alert("Invalid date range.");
+      return;
+    }
+
+    const fromDate = new Date(from);
+    const toDate = new Date(to);
+
+    const filteredLogs = logs.filter((log) => {
+      const logDate = new Date(log.timestamp);
+      return logDate >= fromDate && logDate <= toDate;
+    });
+
+    const csvHeader = "SKU,PO,Serial,Timestamp\n";
+    const rows = filteredLogs
+      .flatMap((log) =>
+        log.barcodes.map(
+          (barcode) =>
+            `${log.sku},${log.po},${barcode},${log.timestamp}`
+        )
+      )
+      .join("\n");
+
+    const blob = new Blob([csvHeader + rows], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `barcodes_${from}_${to}.csv`;
+    a.click();
+  };
+
   return (
-    <div style={{ padding: "20px", backgroundColor: "#f9f9f9" }}>
-      <div style={{ display: "flex", justifyContent: "space-between" }}>
-        <h1>Barcode Printing Utility</h1>
+    <div style={{ padding: "40px", fontFamily: "sans-serif", position: "relative" }}>
+      {/* Logo/Header */}
+      <h2 style={{ textAlign: "center", letterSpacing: "5px" }}>PALMONAS</h2>
+      <h1 style={{ textAlign: "center" }}>Barcode Printing Utility</h1>
+
+      {/* Sign In/Out */}
+      <div style={{ position: "absolute", top: "20px", right: "20px" }}>
         {user ? (
-          <div>
-            ✅ {user.name} &nbsp;
-            <button
-              onClick={() => {
-                googleLogout();
-                setUser(null);
-              }}
-            >
-              Sign Out
-            </button>
-          </div>
+          <button onClick={() => { googleLogout(); setUser(null); }}>
+            Sign Out
+          </button>
         ) : (
           <GoogleLogin
             onSuccess={(credentialResponse) => {
               const decoded = jwtDecode(credentialResponse.credential);
               setUser(decoded);
-              setError("");
             }}
             onError={() => console.log("Login Failed")}
           />
         )}
       </div>
 
-      <div style={{ marginTop: "20px" }}>
+      {/* Form Inputs */}
+      <div style={{ marginTop: "40px", maxWidth: "400px" }}>
         <div>
-          <label>SKU:</label>
+          <label>SKU :</label>
           <input
             value={sku}
             onChange={(e) => setSku(e.target.value)}
             disabled={!user}
+            style={{ width: "100%", margin: "5px 0" }}
           />
         </div>
         <div>
-          <label>PO:</label>
+          <label>Start Serial :</label>
           <input
-            value={po}
-            onChange={(e) => setPo(e.target.value)}
+            value={startSerial}
+            onChange={(e) => setStartSerial(e.target.value)}
             disabled={!user}
+            style={{ width: "100%", margin: "5px 0" }}
           />
         </div>
         <div>
-          <label>Quantity:</label>
+          <label>Quantity :</label>
           <input
             type="number"
             value={quantity}
             onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
             disabled={!user}
+            style={{ width: "100%", margin: "5px 0" }}
+          />
+        </div>
+        <div>
+          <label>PO Number :</label>
+          <input
+            value={po}
+            onChange={(e) => setPo(e.target.value)}
+            disabled={!user}
+            style={{ width: "100%", margin: "5px 0" }}
           />
         </div>
 
-        <p>Last Serial Used for {sku || "N/A"}: {lastSerial}</p>
+        <div>
+          <label>Printer :</label>
+          <select style={{ width: "100%", margin: "5px 0" }}>
+            <option>Default Printer</option>
+          </select>
+        </div>
+
+        <p>Last Serial Printed : {sku ? lastSerial : "N/A"}</p>
 
         <button onClick={generateBarcodes} disabled={!user}>
           Generate Barcodes
@@ -208,19 +196,34 @@ export default function App() {
         <button onClick={handlePrint} disabled={!user}>
           Print Barcodes
         </button>
-        <button onClick={openExportPage} disabled={logs.length === 0}>
-          Export Barcodes CSV
-        </button>
+
+        {error && <p style={{ color: "red" }}>{error}</p>}
       </div>
 
-      {error && <p style={{ color: "red" }}>{error}</p>}
-
-      <h3>Preview:</h3>
+      {/* Preview */}
+      <h4>Preview :</h4>
       <div className="barcode-preview">
         {barcodes.map((code) => (
           <svg key={code} id={`barcode-${code}`}></svg>
         ))}
       </div>
+
+      {/* Export */}
+      <button
+        onClick={handleExport}
+        style={{
+          position: "fixed",
+          bottom: "30px",
+          right: "30px",
+          background: "#f88",
+          padding: "10px 20px",
+          border: "none",
+          borderRadius: "5px",
+          cursor: "pointer"
+        }}
+      >
+        Data Export Button
+      </button>
 
       <style>{`
         @media print {
