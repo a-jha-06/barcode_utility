@@ -3,6 +3,8 @@ import { GoogleLogin, googleLogout } from "@react-oauth/google";
 import { jwtDecode } from "jwt-decode";
 import JsBarcode from "jsbarcode";
 import "./App.css";
+import { app, analytics } from "./firebase";
+
 
 function BarcodePrintingUtility() {
   const [user, setUser] = useState(null);
