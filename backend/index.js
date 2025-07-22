@@ -1,11 +1,9 @@
 import express from 'express';
 import cors from 'cors';
-import bodyParser from 'body-parser';
 import dotenv from 'dotenv';
-import moment from 'moment';
-import { parse } from 'json2csv';
-
-import { getSerials, updateSerials, getFileFromGCS } from './gcs.js';
+import { v4 as uuidv4 } from 'uuid';
+import { getSerials, updateSerials, appendAuditLog } from './storage.js';
+import { verifyFirebaseToken } from './authMiddleware.js';
 
 dotenv.config();
 
@@ -13,97 +11,99 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 app.use(cors());
-app.use(bodyParser.json());
+app.use(express.json());
 
-/**
- * Export CSV API
- * Query params: ?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
- */
-app.get('/export-csv', async (req, res) => {
-  try {
-    const { startDate, endDate } = req.query;
-
-    if (!startDate || !endDate) {
-      return res.status(400).json({ error: 'startDate and endDate are required' });
-    }
-
-    const auditContent = await getFileFromGCS('audit.json');
-    const logs = JSON.parse(auditContent);
-
-    console.log("Received startDate:", startDate);
-    console.log("Received endDate:", endDate);
-    console.log("Total logs in audit:", logs.length);
-
-    const filtered = logs.filter(entry => {
-      const ts = moment(entry.timestamp);
-      return ts.isBetween(startDate, endDate, undefined, '[]');
-    });
-
-    console.log("Filtered logs:", filtered.length);
-
-    if (!filtered.length) {
-      return res.status(404).json({ error: 'No data found in this range' });
-    }
-
-    const csv = parse(filtered);
-    res.header('Content-Type', 'text/csv');
-    res.attachment('barcode-export.csv');
-    res.send(csv);
-  } catch (err) {
-    console.error('CSV Export Error:', err);
-    res.status(500).send('Internal Server Error');
-  }
-});
-
-/**
- * Get last serial for a given prefix
- */
+// API: Get last serial for a prefix
 app.get('/api/last-serial/:prefix', async (req, res) => {
   try {
     const prefix = req.params.prefix;
     const serials = await getSerials();
-    const lastSerial = serials[prefix] || 0;
-    res.json({ lastSerial });
+    const last = serials[prefix] || 0;
+    res.json({ lastSerial: last });
   } catch (err) {
-    console.error('Error getting last serial:', err);
-    res.status(500).json({ error: 'Failed to retrieve serials' });
+    console.error('❌ Error in GET /last-serial:', err);
+    res.status(500).json({ error: 'Failed to fetch last serial' });
   }
 });
 
-/**
- * Barcode generation endpoint
- */
-app.post('/api/barcodes', async (req, res) => {
+// API: Generate barcodes (requires auth)
+app.post('/api/barcodes', verifyFirebaseToken, async (req, res) => {
   try {
     const { skuPrefix, po, barcodeNumber, quantity, startSerial } = req.body;
-    console.log('Request body:', req.body);
+    const userEmail = req.user.email;
 
-    if (!skuPrefix || !barcodeNumber || quantity <= 0 || isNaN(startSerial)) {
-      return res.status(400).json({ error: 'Missing or invalid parameters' });
+    if (!skuPrefix || !quantity || !startSerial || !barcodeNumber || !userEmail) {
+      return res.status(400).json({ error: 'Missing required fields' });
     }
 
     const barcodes = [];
     for (let i = 0; i < quantity; i++) {
       const serial = startSerial + i;
-      barcodes.push({
-        barcodeValue: `${skuPrefix}-${serial}`,
-        barcodeNumber,
-        serial,
-        po,
-        timestamp: new Date().toISOString(), // Add timestamp for audit
-      });
+      const barcodeValue = `${skuPrefix}-${serial}`;
+      barcodes.push({ barcodeValue, barcodeNumber, po, serial });
     }
 
-    const finalSerial = startSerial + quantity - 1;
-    await updateSerials(skuPrefix, finalSerial);
+    // Audit log entry
+    await appendAuditLog({
+      id: uuidv4(),
+      timestamp: new Date().toISOString(),
+      user: userEmail,
+      skuPrefix,
+      po,
+      barcodeNumber,
+      quantity,
+      startSerial,
+      endSerial: startSerial + quantity - 1,
+    });
 
-    res.json({ barcodes, lastSerial: finalSerial });
+    // Update serials.json
+    await updateSerials(skuPrefix, startSerial + quantity - 1);
+
+    res.json({ barcodes, lastSerial: startSerial + quantity - 1 });
   } catch (err) {
-    console.error('Error generating barcodes:', err);
-    res.status(500).json({ error: 'Could not generate barcodes' });
+    console.error('❌ Error in POST /barcodes:', err);
+    res.status(500).json({ error: 'Failed to generate barcodes' });
   }
 });
 
+// CSV export (no auth)
+app.get('/export-csv', async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    if (!startDate || !endDate) {
+      return res.status(400).send('Missing date range');
+    }
+
+    const { getFileFromGCS } = await import('./storage.js');
+    const raw = await getFileFromGCS('audit.json');
+    const logs = JSON.parse(raw);
+
+    const filtered = logs.filter((log) => {
+      const ts = new Date(log.timestamp);
+      return ts >= new Date(startDate) && ts <= new Date(endDate);
+    });
+
+    const headers = Object.keys(filtered[0] || {});
+    const rows = filtered.map((log) =>
+      headers.map((key) => `"${(log[key] || '').toString().replace(/"/g, '""')}"`).join(',')
+    );
+
+    const csv = [headers.join(','), ...rows].join('\n');
+
+    res.setHeader('Content-Disposition', 'attachment; filename=barcodes.csv');
+    res.setHeader('Content-Type', 'text/csv');
+    res.send(csv);
+  } catch (err) {
+    console.error('❌ Error in GET /export-csv:', err);
+    res.status(500).send('Failed to export data');
+  }
+});
+app.use(cors({
+  origin: ['http://localhost:3000', 'https://barcode-printing-utility.web.app'], // allow frontend
+  methods: ['GET', 'POST'],
+  credentials: true,
+}));
+// Start server
 app.listen(PORT, () => {
-  console.log(`✅ Server is running on http://localhost:${PORT}`);
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
