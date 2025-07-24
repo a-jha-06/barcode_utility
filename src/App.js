@@ -144,7 +144,7 @@ function BarcodePrintingUtility() {
 
   return (
     <div className="container">
-            <h2 style={{ textAlign: "center" }}>PALMONAS</h2>
+            <h2 style={{ textAlign: "center" }}>UTILITY PROJECT</h2>
       <h1 style={{ textAlign: "center" }}>Barcode Printing Utility</h1>
 
       {/* Google Auth */}
